@@ -34,11 +34,14 @@ import pygame
 # 設定
 # two_player = False
 two_player = True
-play_round = 2
+play_round = 3
 HP_A = play_round
 HP_B = play_round
+winner = str()
 ATK_A = False
 ATK_B = False
+webcam1 = 0
+webcam2 = 1
 # Only admit mudra if the probability greater than 70%
 qualification = 0.6
 
@@ -134,6 +137,12 @@ best_model    = os.path.join(model_dir, best_model)
 # 設定各個狀態的旗標
 # global end_game = False
 
+monitor={
+    "HP_A": HP_A,
+    "HP_B": HP_B,
+    "wait_queue_if_empty": "",
+    "wait_queue_if_not_empty": ""
+}
 
 #endregion  [Global]
 
@@ -147,11 +156,12 @@ class Camera:
         global player_showed_mudra_h
         global player_showed_mudra_w
         self.webcam = webcam
-        self.Frame = np.zeros((player_showed_mudra_h,player_showed_mudra_w,3), np.uint8)
+        self.emptyFrame = np.zeros((player_showed_mudra_h,player_showed_mudra_w,3), np.uint8)
+        self.Frame = self.emptyFrame
         self.status = False
         self.isstop = False
 		
-	# 攝影機連接。
+	    # 攝影機連接。
         self.capture = cv2.VideoCapture(webcam, cv2.CAP_DSHOW)
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH,  160)
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
@@ -159,13 +169,15 @@ class Camera:
 
     def start(self):
 	# 把程式放進子執行緒，daemon=True 表示該執行緒會隨著主執行緒關閉而關閉。
-        print('ipcam{} started!'.format(self.webcam))
-        threading.Thread(target=self.queryframe, daemon=True, args=()).start()
+        # print('ipcam{} started!'.format(self.webcam))
+        self.WebCam_t = threading.Thread(target=self.queryframe, daemon=True, args=())
+        self.WebCam_t.start()
 
     def stop(self):
 	# 記得要設計停止無限迴圈的開關。
         self.isstop = True
-        print('ipcam{} stopped!'.format(self.webcam))
+        self.WebCam_t.join()
+        # print('ipcam{} stopped!'.format(self.webcam))
    
     def getframe(self):
 	# 當有需要影像時，再回傳最新的影像。
@@ -174,6 +186,8 @@ class Camera:
     def queryframe(self):
         while (not self.isstop):
             self.status, self.Frame = self.capture.read()
+            if not self.status:
+                self.Frame = self.emptyFrame
             cv2.waitKey(30)
         
         self.capture.release()
@@ -251,7 +265,7 @@ def wait_queue_if_empty(q:queue):
     while wait:
         if end_game == True:
             break
-        print("wait if empty.")
+        # print("wait if empty.")
         wait = q.empty()
         time.sleep(0.05)
 
@@ -262,9 +276,10 @@ def wait_queue_if_not_empty(q:queue):
     while not wait:
         if end_game == True:
             break
-        print("wait if not empty.")
+        # print("wait if not empty.")
         wait = q.empty()
         time.sleep(0.05)
+
 
 def Img2Pygame(frame):
     frame = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
@@ -272,6 +287,7 @@ def Img2Pygame(frame):
     frame = np.rot90(frame)
     frame = pygame.surfarray.make_surface(frame)
     return frame
+
 
 def show_victory(player:str):
 
@@ -310,7 +326,7 @@ def detect_mudra(webcam:int, player:str, target_queue:queue.Queue, answer_queue:
 
         
 
-        # print("detect")
+        # # print("detect")
 
         # 從WebCam讀取一張圖片
         frame = camera.getframe()
@@ -326,7 +342,7 @@ def detect_mudra(webcam:int, player:str, target_queue:queue.Queue, answer_queue:
         
         cv2.waitKey(30)
 
-        print("detect")
+        # print("detect")
 
         
         wait_queue_if_empty(target_queue)
@@ -346,7 +362,7 @@ def detect_mudra(webcam:int, player:str, target_queue:queue.Queue, answer_queue:
 
         if max_probablility > qualification:                # 達到標準才視為結印
             print("Player ", player, ": ", mudra_str)
-            print(end_game)
+            # print(end_game)
             answer_queue.put(mudra_str)
             continue
 
@@ -366,7 +382,7 @@ def judge_mudra(target_queue:queue.Queue, answer_queue:queue.Queue):
     mudra_order = 0
     while (end_ninjutsu == False) and (end_game == False):
 
-        print("judge")
+        # print("judge")
 
         wait_queue_if_empty(target_queue)
         if end_game == True:
@@ -377,6 +393,9 @@ def judge_mudra(target_queue:queue.Queue, answer_queue:queue.Queue):
             break
         answer_mudra = answer_queue.get()
 
+        print("target: {}".format(target_mudra))
+        print("answer: {}".format(answer_mudra))
+
         if target_mudra == answer_mudra:
             mudra_order += 1
             wait_queue_if_empty(target_queue)
@@ -386,7 +405,7 @@ def judge_mudra(target_queue:queue.Queue, answer_queue:queue.Queue):
         
         if mudra_order >= mudras_num_in_ninjutsu:
             end_ninjutsu = True
-    print("end judge.")
+    # print("end judge.")
 
 
 def play(webcam:int, player:str, target_queue:queue.Queue, answer_queue:queue.Queue):
@@ -416,10 +435,10 @@ def play(webcam:int, player:str, target_queue:queue.Queue, answer_queue:queue.Qu
         if ninjutsu_complete_int >= play_round:
             show_victory(player)
             end_game = True
-    print("squeeze  {}.".format())
+    # print("squeeze  {}.".format(player))
     detect_mudra_thread.join()
-    print("detect_mudra {}".format(player))
-    print("end play {}".format(player))
+    # print("detect_mudra {}".format(player))
+    # print("end play {}".format(player))
 
 
 def show_target_mudra(player:str, target_queue:queue.Queue):
@@ -444,14 +463,25 @@ def show_target_mudra(player:str, target_queue:queue.Queue):
 
         for mudra_str in Ninjutsu_mudras_dict[Ninjutsu_str]:
 
+            # print("squeeze{} 3.".format(player))
+
+            wait_queue_if_not_empty(target_queue)
+            # print("eng_game flag == ", end_game)
+            if end_game == True:
+                # print("leave mudra {}.".format(player))
+                break
+            target_queue.put(mudra_str)
+
+
+            #region     [將題目交給pygame顯示]
             Mudra_img_path = os.path.join(Mudra_dir_path, (mudra_str + '.jpg'))
-            # print("show [", mudra_str, "] picture:")
-            print(Mudra_img_path)
+            print("{} target: {}".format(player, mudra_str))
+            # print(Mudra_img_path)
             # if os.path.isfile(Mudra_img_path):
             Mudra_img = cv2.imread(Mudra_img_path)
             # cv2.startWindowThread()
 
-            print("squeeze{} 1.".format(player))
+            # print("squeeze{} 1.".format(player))
             
             Mudra_img = cv2.resize(Mudra_img, (target_img_w, target_img_h))
             # cv2.namedWindow(Ninjutsu_str)        # Create a named window
@@ -460,26 +490,18 @@ def show_target_mudra(player:str, target_queue:queue.Queue):
             # cv2.imshow(Ninjutsu_str, Mudra_img)
             cv2.waitKey(500)
 
-            print("squeeze{} 2.".format(player))
+            # print("squeeze{} 2.".format(player))
 
-            # 將題目交給 pygame 顯示
             target_mudra_pygame[player] = Img2Pygame(Mudra_img)
+            #endregion  [將題目交給pygame顯示]
 
-            print("squeeze{} 3.".format(player))
 
-            wait_queue_if_not_empty(target_queue)
-            print("eng_game flag == ", end_game)
-            if end_game == True:
-                print("leave mudra {}.".format(player))
-                break
-            target_queue.put(mudra_str)
-
-        print("eng_game flag == ", end_game)
+        # print("eng_game flag == ", end_game)
         if end_game == True:
-            print("leave ninjutsu {}.".format(player))
+            # print("leave ninjutsu {}.".format(player))
             break
         # cv2.destroyWindow(Ninjutsu_str)
-    print("end show_target_mudra {}".format(player))
+    # print("end show_target_mudra {}".format(player))
 
 
 #endregion  [Declare Function]
@@ -491,7 +513,10 @@ def battle():
     global HP_A
     global HP_B
     global play_round
+    global end_game
     global mudras_num_in_ninjutsu
+    global webcam1, webcam2
+    global winner
 
     HP_A = play_round
     HP_B = play_round
@@ -503,20 +528,20 @@ def battle():
         answer_queue_B = queue.Queue(maxsize=mudras_num_in_ninjutsu)
 
 
-    playerA_t = threading.Thread(target=play, daemon=True, args=(1,'A', target_queue_A, answer_queue_A))
+    # 啟動玩家thread
+    playerA_t = threading.Thread(target=play, daemon=True, args=(webcam1,'A', target_queue_A, answer_queue_A))
     playerA_t.start()
     if two_player:
-        playerB_t = threading.Thread(target=play, daemon=True, args=(2,'B', target_queue_B, answer_queue_B))
+        playerB_t = threading.Thread(target=play, daemon=True, args=(webcam2,'B', target_queue_B, answer_queue_B))
         playerB_t.start()
 
-    # while global end_game == False:
 
     # 隨機產生play_round個指定忍術
     for i in range(play_round):
         Ninjutsu_str = random.choice(str().join(Ninjutsu_mudras_dict.keys()))
         Ninjutsu_List.extend(Ninjutsu_str)
 
-    # print("忍術題目：", Ninjutsu_List)
+    # # print("忍術題目：", Ninjutsu_List)
 
     show_target_mudra_A_t = threading.Thread(target=show_target_mudra, daemon=True, args=('A', target_queue_A))
     show_target_mudra_A_t.start()
@@ -524,18 +549,26 @@ def battle():
         show_target_mudra_B_t = threading.Thread(target=show_target_mudra, daemon=True, args=('B', target_queue_B))
         show_target_mudra_B_t.start()
 
+    while not end_game:
+        pass
+
+    if HP_A == 0:
+        winner = "Sasuke"
+    if HP_B == 0:
+        winner = "Naruto"
+
 
     show_target_mudra_A_t.join()
-    print("show_target_mudra A join.")
+    # print("show_target_mudra A join.")
     if two_player:
         show_target_mudra_B_t.join()
-        print("show_target_mudra B join.")
+        # print("show_target_mudra B join.")
         playerB_t.join()
-        print("playerB_t join.")
+        # print("playerB_t join.")
     playerA_t.join()
-    print("playerA_t join.")
+    # print("playerA_t join.")
 
-    print("end battle.")
+    # print("end battle.")
 
     # cv2.destroyAllWindows()
 
