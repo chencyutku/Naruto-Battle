@@ -131,6 +131,11 @@ def draw_text(text, center: list):
 
 def draw_win(winner):
     global ttf_path
+    global game_on, game_win
+
+    game_on = False
+    game_win = False
+
     text_font = pygame.font.Font(ttf_path, 54)
     text = text_font.render("{} win the game !!!".format(winner), True, RED, WHITE)
     textRect = text.get_rect()
@@ -140,7 +145,7 @@ def draw_win(winner):
     t.sleep(2)
 
 while True:
-#遊戲視窗主迴圈
+# 遊戲視窗主迴圈
 
     for event in pygame.event.get():
         if event.type == QUIT:                                        # pygame.QUIT
@@ -163,14 +168,13 @@ while True:
                     battle_t.start()
                     game_on = True
 
-    if game_on == False and game_win == False:
+    if game_on == False:
         # 將背景圖畫上去
         screen.blit(background, (0,0))
         # 印出主選單
         draw_text(start_game_text, (sw//2, sh-sh//4))
         draw_text(quit_text, (sw//2, sh-sh//4+50))
-
-    if game_on:
+    else:
         screen.fill(WHITE)
         draw_mudra()
         draw_head()
